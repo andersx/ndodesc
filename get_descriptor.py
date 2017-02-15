@@ -47,7 +47,7 @@ ZNUC["Cl"] = 7
 
 # Number of shells per alom
 MAXSHELL = dict()
-MAXSHELL["H"]  = 1
+MAXSHELL["H"]  = 2
 MAXSHELL["C"]  = 2
 MAXSHELL["N"]  = 2
 MAXSHELL["O"]  = 2
@@ -84,7 +84,7 @@ GAA["Cl"] = 11.30 * E2H
 # Orbital exponents in AU [ZS, ZP]
 # From AM1
 ZETA = dict()
-ZETA["H"]  = [ 1.18807800]
+ZETA["H"]  = [ 1.18807800, 0.00000000]
 ZETA["C"]  = [ 1.80866500, 1.68511600] 
 ZETA["N"]  = [ 2.31541000, 2.15794000] 
 ZETA["O"]  = [ 3.10803200, 2.52403900]
@@ -94,6 +94,9 @@ ZETA["Cl"] = [ 3.63137600, 2.07679900]
 
 def twoe(rab, gaa, gbb):
     # Mataga-Nishimoto approximation
+    small_g = 0.0001
+    if (gaa < small_g) or (gbb < small_g):
+        return 0.0
 
     gab = (gaa + gbb) / (2.0 + rab * (gaa + gbb))
 
@@ -163,6 +166,10 @@ def ss(r, z1, z2):
 
 def overlap(rij, zetai, shelli, zetaj, shellj):
 
+    small_zeta = 0.0001
+    if (zetai < small_zeta) or (zetaj < small_zeta):
+        return 0.0
+
     return SlaterOverlapCartesian(shelli + 1, 0, 0, zetai, 0.00000, 0.00000, 0.00000, \
         shellj + 1, 0, 0, zetaj, 0.00000, 0.000000, rij)
 
@@ -210,6 +217,7 @@ def get_matrix(atomtypes, coordinates):
                         pass # No on-site terms in CNDO currently
                     else:
                         Sab = overlap(rij, ZETA[iatom][ishell], ishell, ZETA[jatom][jshell], jshell)
+                        print Sab, iatom, jatom
                         H[iorb,jorb] = (BETA[iatom] + BETA[jatom]) / 2.0 * Sab
 
     return G, H
