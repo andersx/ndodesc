@@ -202,7 +202,7 @@ def get_matrix(atomtypes, coordinates, size=23):
                         H[iorb,jorb] = (BETA[iatom] + BETA[jatom]) / 2.0 * Sab
 
     
-    return triangular_to_vector(G), triangular_to_vector(H)
+    return G, H
 
 def sort_atoms(atomtypes, coordinates, idx=0):
 
@@ -239,14 +239,11 @@ def get_coulomb_matrix(atomtypes, coordinates, size=23):
             if i == j:
                 Mij[i, j] = 0.5 * NUCLEAR_CHARGE[atomtype_i] ** 2.4
 
-            elif j > i:
-                continue
-
             else:
                 Mij[i, j] = NUCLEAR_CHARGE[atomtype_i] * NUCLEAR_CHARGE[atomtype_j] \
                             / np.linalg.norm(coordinates[i] - coordinates[j])
 
-    return triangular_to_vector(Mij)
+    return Mij
 
 
 def get_ndodesc(mol, size=23):
@@ -255,6 +252,15 @@ def get_ndodesc(mol, size=23):
     M = get_coulomb_matrix(atomtypes, coordinates, size=size)
     (G, H) = get_matrix(atomtypes, coordinates, size=size)
 
+    np.set_printoptions(precision=10,linewidth=500)
+
+    M = triangular_to_vector(M)
+    G = triangular_to_vector(G)
+    H = triangular_to_vector(H)
+
+
+    X = np.concatenate([M, G, H])
+    X = np.concatenate([M, G, H])
     X = np.concatenate([M, G, H])
 
     return X
@@ -267,8 +273,5 @@ if __name__ == "__main__":
     mol = Molecule()
     mol.read_xyz(filename)
 
-    X = get_ndodesc(mol, size=4)
-
-    print X
-    print X.shape
+    X = get_ndodesc(mol, size=5)
 
