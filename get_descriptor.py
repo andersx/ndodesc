@@ -36,6 +36,18 @@ E2H = EV_TO_HARTREE
 # http://dx.doi.org/10.1063/1.1679498
 
 
+NUCLEAR_CHARGE = dict()
+NUCLEAR_CHARGE["H"] = 1.0
+NUCLEAR_CHARGE["C"] = 6.0
+NUCLEAR_CHARGE["N"] = 7.0
+NUCLEAR_CHARGE["O"] = 8.0
+NUCLEAR_CHARGE["F"] = 9.0
+NUCLEAR_CHARGE["Si"] = 14.0
+NUCLEAR_CHARGE["P"] = 15.0
+NUCLEAR_CHARGE["S"] = 16.0
+NUCLEAR_CHARGE["Cl"] = 17.0
+NUCLEAR_CHARGE["Ge"] = 32.0
+
 ZNUC = dict()
 ZNUC["H"]  = 1
 ZNUC["C"]  = 4
@@ -91,6 +103,28 @@ ZETA["O"]  = [ 3.10803200, 2.52403900]
 ZETA["F"]  = [ 3.77008200, 2.49467000]
 ZETA["Cl"] = [ 3.63137600, 2.07679900]
 
+def triangular_to_vector(M, uplo="U"):
+
+    if not (M.shape[0] == M.shape[1]):
+        print "ERROR: Not a square matrix."
+        exit(1)
+
+    n = M.shape[0]
+    l = (n + 1) * n // 2 # Explicit integer division
+    v = np.empty((l))
+
+    index = 0
+    for i in range(n):
+        for j in range(n):
+            
+            if j > i:
+                continue
+
+            v[index] = M[i, j]
+
+            index += 1
+
+    return v
 
 def twoe(rab, gaa, gbb):
     # Mataga-Nishimoto approximation
@@ -107,62 +141,6 @@ def distance(a, b):
     rab = np.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2 + (a[2] - b[2])**2)
     return rab * ANGS_TO_BOHR
 
-# def ss(rab, a1, a2):
-# 
-#     r2 = rab * rab
-# 
-#     n1 = ((np.pi/(2.0*a1))**(3.0/2.0))**(-1.0/2.0)
-#     n2 = ((np.pi/(2.0*a2))**(3.0/2.0))**(-1.0/2.0)
-#     a12i = 1.0/(a1 + a2)
-#     integral = (np.pi*a12i)**(3.0/2.0) * np.exp(-a1*a2*a12i*r2)
-#     return n1 * n2 * integral
-
-# dddef overlap_1s_1s(r, z1, z2):
-def ss(r, z1, z2):
-    from math import exp
-    from math import sqrt
-    from math import pi
-    
-    ZERO_TOLERANCE = 0.0001
-    
-    
-    def calc_p(z1, z2, r):
-    
-        p1 = z1 * r
-        p2 = z2 * r
-    
-        return 0.5 * (p1 + p2)
-    
-    
-    def calc_t(z1, z2):
-    
-        return (z1 - z2) / (z1 + z2)
-    """
-    Returns the overlap <1s|1s> orbtials at a distance, r, 
-    with zeta basis set exponents, z1 and z2.
-
-    Arguments:
-
-    r -- distance between the orbitals (in Bohr)
-    z1 -- Zeta basis set exponent of basis function on atom1 (in Bohr^-1)
-    z2 -- Zeta basis set exponent of basis function on atom2 (in Bohr^-1)
-    """
-
-    t = calc_t(z1, z2)
-    p = calc_p(z1, z2, r)
-
-    if abs(t) < ZERO_TOLERANCE:
-
-        # print "t = 0"
-        return exp(-p) * (3.0 + 3.0*p + p*p) / 3.0
-
-    else:
-
-        # print "t != 0"
-        return - exp(-p * (1.0 + t)) * (-1.0 + t) * pow(p * (1.0 + t), 1.5) \
-            * sqrt(p - p*t) * (exp(2.0*p*t) * (1.0 + t) * (-1.0 + t  + p*t) \
-            -  (-1.0 + t) * (1.0 + t  + p*t)) / (2.0 * p*p*p*t*t*t)
-
 
 def overlap(rij, zetai, shelli, zetaj, shellj):
 
@@ -173,17 +151,20 @@ def overlap(rij, zetai, shelli, zetaj, shellj):
     return SlaterOverlapCartesian(shelli + 1, 0, 0, zetai, 0.00000, 0.00000, 0.00000, \
         shellj + 1, 0, 0, zetaj, 0.00000, 0.000000, rij)
 
+
 # Assemble one-electron and two-electron matrices
-def get_matrix(atomtypes, coordinates):
+def get_matrix(atomtypes, coordinates, size=23):
  
     nshell = [MAXSHELL[x] for x in atomtypes]
     totshell = sum(nshell)
 
     # One-electron terms
-    G = np.zeros((totshell,totshell))
+    # G = np.zeros((totshell,totshell))
+    G = np.zeros((size*2,size*2))
 
     # Two-electron terms
-    H = np.zeros((totshell,totshell))
+    # H = np.zeros((totshell,totshell))
+    H = np.zeros((size*2,size*2))
 
     for i, iatom in enumerate(atomtypes):
         for j, jatom in enumerate(atomtypes):
@@ -217,14 +198,66 @@ def get_matrix(atomtypes, coordinates):
                         pass # No on-site terms in CNDO currently
                     else:
                         Sab = overlap(rij, ZETA[iatom][ishell], ishell, ZETA[jatom][jshell], jshell)
-                        print Sab, iatom, jatom
+                        # print Sab, iatom, jatom
                         H[iorb,jorb] = (BETA[iatom] + BETA[jatom]) / 2.0 * Sab
 
-    return G, H
+    
+    return triangular_to_vector(G), triangular_to_vector(H)
+
+def sort_atoms(atomtypes, coordinates, idx=0):
+
+    atomtype_i = atomtypes[idx]
+
+    distances = []
+
+    for j, atomtype_j in enumerate(atomtypes):
+
+        distance = np.linalg.norm(coordinates[idx] - coordinates[j])
+
+        distances.append((distance, j))
+
+    distances.sort()
+
+    atomtypes_sorted = []
+    coordinates_sorted = []
+
+    for (dist_j, j) in distances:
+
+        atomtypes_sorted.append(atomtypes[j])
+        coordinates_sorted.append(coordinates[j])
+
+    return atomtypes_sorted, coordinates_sorted
 
 
 
+def get_coulomb_matrix(atomtypes, coordinates, size=23):
 
+    Mij = np.zeros((size, size))
+
+    for i, atomtype_i in enumerate(atomtypes):
+        for j, atomtype_j in enumerate(atomtypes):
+            if i == j:
+                Mij[i, j] = 0.5 * NUCLEAR_CHARGE[atomtype_i] ** 2.4
+
+            elif j > i:
+                continue
+
+            else:
+                Mij[i, j] = NUCLEAR_CHARGE[atomtype_i] * NUCLEAR_CHARGE[atomtype_j] \
+                            / np.linalg.norm(coordinates[i] - coordinates[j])
+
+    return triangular_to_vector(Mij)
+
+
+def get_ndodesc(mol, size=23):
+
+    atomtypes, coordinates = sort_atoms(mol.atomtypes, mol.coordinates)
+    M = get_coulomb_matrix(atomtypes, coordinates, size=size)
+    (G, H) = get_matrix(atomtypes, coordinates, size=size)
+
+    X = np.concatenate([M, G, H])
+
+    return X
 
 if __name__ == "__main__":
 
@@ -234,8 +267,8 @@ if __name__ == "__main__":
     mol = Molecule()
     mol.read_xyz(filename)
 
-    # print zip(mol.atomtypes, mol.coordinates)
-    (G, H) = get_matrix(mol.atomtypes, mol.coordinates)
-    print G
-    print H
+    X = get_ndodesc(mol, size=4)
+
+    print X
+    print X.shape
 
